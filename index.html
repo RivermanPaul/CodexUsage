@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-    <link rel="stylesheet" href="styles.css?v=4">
+    <link rel="stylesheet" href="styles.css?v=5">
   </head>
   <body>
     <main class="app-shell">
@@ -20,13 +20,19 @@
           <p class="eyebrow">Codex</p>
           <h1>Budget</h1>
         </div>
-        <button class="icon-button" id="resetDefaults" type="button" aria-label="Reset saved values" title="Reset saved values">
-          <svg aria-hidden="true" viewBox="0 0 24 24">
+        <button class="icon-button" id="refreshButton" type="button" aria-label="Refresh usage stats" title="Refresh usage stats">
+          <span class="button-spinner" id="refreshSpinner" aria-hidden="true"></span>
+          <svg class="refresh-icon" aria-hidden="true" viewBox="0 0 24 24">
             <path d="M3 12a9 9 0 1 0 3-6.7"></path>
             <path d="M3 4v6h6"></path>
           </svg>
         </button>
       </header>
+
+      <div class="refresh-status" id="refreshStatus" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="refreshStatusText">Last refreshed just now</span>
+      </div>
 
       <section class="meter-panel" aria-labelledby="remainingLabel">
         <div class="meter-head">
@@ -103,6 +109,6 @@
       </section>
     </main>
 
-    <script src="app.js?v=4" defer></script>
+    <script src="app.js?v=5" defer></script>
   </body>
 </html>

@@ -1,4 +1,4 @@
-var cacheName = "codex-budget-v4";
+var cacheName = "codex-budget-v5";
 var files = [
   "./",
   "index.html",

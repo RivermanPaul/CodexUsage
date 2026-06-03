@@ -22,9 +22,12 @@
   var roomValue = document.getElementById("roomValue");
   var resetSummary = document.getElementById("resetSummary");
   var paceCopy = document.getElementById("paceCopy");
-  var resetDefaults = document.getElementById("resetDefaults");
+  var refreshButton = document.getElementById("refreshButton");
+  var refreshStatus = document.getElementById("refreshStatus");
+  var refreshStatusText = document.getElementById("refreshStatusText");
 
   var state = loadState();
+  var refreshTimer = null;
 
   function loadState() {
     try {
@@ -37,6 +40,13 @@
 
   function saveState() {
     window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }
+
+  function ensureRefreshTime() {
+    if (!state.lastRefreshedAt) {
+      state.lastRefreshedAt = new Date().toISOString();
+      saveState();
+    }
   }
 
   function clamp(value, min, max) {
@@ -71,6 +81,15 @@
       hour: "numeric",
       minute: "2-digit"
     }).format(reset);
+  }
+
+  function formatRefreshTime(value) {
+    var refreshed = new Date(value);
+    if (Number.isNaN(refreshed.getTime())) return "Last refreshed just now";
+    return "Last refreshed " + new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit"
+    }).format(refreshed);
   }
 
   function toLocalInputValue(date) {
@@ -121,6 +140,7 @@
     dailyInput.value = String(state.dailyAllowance);
     resetInput.value = state.resetAt;
     resetDisplay.textContent = formatResetControl(state.resetAt);
+    refreshStatusText.textContent = formatRefreshTime(state.lastRefreshedAt);
 
     remainingValue.textContent = formatPercent(state.remaining);
     remainingBar.style.width = state.remaining + "%";
@@ -150,8 +170,27 @@
 
   function setRemaining(value) {
     state.remaining = clamp(value, 0, 100);
+    state.lastRefreshedAt = new Date().toISOString();
     saveState();
     render();
+  }
+
+  function setRefreshing(isRefreshing) {
+    refreshButton.classList.toggle("is-refreshing", isRefreshing);
+    refreshStatus.classList.toggle("is-refreshing", isRefreshing);
+    refreshButton.disabled = isRefreshing;
+    refreshStatusText.textContent = isRefreshing ? "Refreshing..." : formatRefreshTime(state.lastRefreshedAt);
+  }
+
+  function refreshStats() {
+    window.clearTimeout(refreshTimer);
+    setRefreshing(true);
+    refreshTimer = window.setTimeout(function () {
+      state.lastRefreshedAt = new Date().toISOString();
+      saveState();
+      render();
+      setRefreshing(false);
+    }, 550);
   }
 
   remainingInput.addEventListener("input", function (event) {
@@ -164,12 +203,14 @@
 
   dailyInput.addEventListener("input", function (event) {
     state.dailyAllowance = clamp(event.target.value, 1, 25);
+    state.lastRefreshedAt = new Date().toISOString();
     saveState();
     render();
   });
 
   resetInput.addEventListener("input", function (event) {
     state.resetAt = event.target.value;
+    state.lastRefreshedAt = new Date().toISOString();
     saveState();
     render();
   });
@@ -180,11 +221,7 @@
     });
   });
 
-  resetDefaults.addEventListener("click", function () {
-    state = Object.assign({}, defaults);
-    saveState();
-    render();
-  });
+  refreshButton.addEventListener("click", refreshStats);
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () {
@@ -192,5 +229,6 @@
     });
   }
 
+  ensureRefreshTime();
   render();
 }());

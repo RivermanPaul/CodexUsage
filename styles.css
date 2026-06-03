@@ -47,7 +47,7 @@ input {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 8px;
 }
 
 .eyebrow,
@@ -95,6 +95,54 @@ h1 {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2;
+}
+
+.button-spinner {
+  display: none;
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(244, 246, 239, 0.28);
+  border-top-color: var(--text);
+  border-radius: 999px;
+  animation: spin 700ms linear infinite;
+}
+
+.icon-button.is-refreshing .button-spinner {
+  display: block;
+}
+
+.icon-button.is-refreshing .refresh-icon {
+  display: none;
+}
+
+.refresh-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 680;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(84, 200, 103, 0.12);
+}
+
+.refresh-status.is-refreshing .status-dot {
+  width: 16px;
+  height: 16px;
+  border: 3px solid rgba(244, 246, 239, 0.22);
+  border-top-color: var(--green);
+  background: transparent;
+  box-shadow: none;
+  animation: spin 700ms linear infinite;
 }
 
 .meter-panel,
@@ -382,5 +430,11 @@ h1 {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
