@@ -2,6 +2,7 @@
   "use strict";
 
   var storageKey = "codex-budget-state-v1";
+  var remoteUsageApiUrl = "https://api.github.com/repos/RivermanPaul/CodexUsage/contents/usage.json?ref=main";
   var remoteUsageUrl = "https://raw.githubusercontent.com/RivermanPaul/CodexUsage/main/usage.json";
   var dayMs = 24 * 60 * 60 * 1000;
   var defaults = {
@@ -251,25 +252,43 @@
 
   function fetchRemoteUsage() {
     var localUsageUrl = new URL("usage.json", window.location.href).href;
-    var urls = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-      ? [localUsageUrl, remoteUsageUrl]
-      : [remoteUsageUrl, localUsageUrl];
+    var localDev = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+    var sources = localDev
+      ? [function () { return fetchJson(localUsageUrl); }, fetchGitHubUsage, function () { return fetchJson(remoteUsageUrl); }]
+      : [fetchGitHubUsage, function () { return fetchJson(remoteUsageUrl); }, function () { return fetchJson(localUsageUrl); }];
 
-    function tryUrl(index) {
-      if (index >= urls.length) throw new Error("Remote usage fetch failed.");
-
-      return fetch(urls[index] + "?cache=" + Date.now(), {
-        cache: "no-store",
-        credentials: "omit"
-      }).then(function (response) {
-        if (!response.ok) throw new Error("Remote usage fetch failed.");
-        return response.json();
-      }).catch(function () {
-        return tryUrl(index + 1);
+    function trySource(index) {
+      if (index >= sources.length) throw new Error("Remote usage fetch failed.");
+      return sources[index]().catch(function () {
+        return trySource(index + 1);
       });
     }
 
-    return tryUrl(0);
+    return trySource(0);
+  }
+
+  function fetchJson(url) {
+    var separator = url.indexOf("?") === -1 ? "?" : "&";
+    return fetch(url + separator + "cache=" + Date.now(), {
+      cache: "no-store",
+      credentials: "omit"
+    }).then(function (response) {
+      if (!response.ok) throw new Error("Remote usage fetch failed.");
+      return response.json();
+    });
+  }
+
+  function fetchGitHubUsage() {
+    return fetch(remoteUsageApiUrl + "&cache=" + Date.now(), {
+      headers: {
+        Accept: "application/vnd.github.raw"
+      },
+        cache: "no-store",
+        credentials: "omit"
+    }).then(function (response) {
+      if (!response.ok) throw new Error("Remote usage fetch failed.");
+      return response.json();
+    });
   }
 
   function openSyncSheet() {
