@@ -255,7 +255,7 @@
     var localDev = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
     var sources = localDev
       ? [function () { return fetchJson(localUsageUrl); }, fetchGitHubUsage, function () { return fetchJson(remoteUsageUrl); }]
-      : [fetchGitHubUsage, function () { return fetchJson(remoteUsageUrl); }, function () { return fetchJson(localUsageUrl); }];
+      : [fetchGitHubUsage, function () { return fetchJson(localUsageUrl); }, function () { return fetchJson(remoteUsageUrl); }];
 
     function trySource(index) {
       if (index >= sources.length) throw new Error("Remote usage fetch failed.");
@@ -280,14 +280,15 @@
 
   function fetchGitHubUsage() {
     return fetch(remoteUsageApiUrl + "&cache=" + Date.now(), {
-      headers: {
-        Accept: "application/vnd.github.raw"
-      },
         cache: "no-store",
         credentials: "omit"
     }).then(function (response) {
       if (!response.ok) throw new Error("Remote usage fetch failed.");
       return response.json();
+    }).then(function (data) {
+      if (data.weeklyRemaining !== undefined) return data;
+      if (!data.content) throw new Error("Remote usage fetch failed.");
+      return JSON.parse(window.atob(String(data.content).replace(/\s/g, "")));
     });
   }
 
