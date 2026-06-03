@@ -22,4 +22,12 @@ The day count uses local calendar days in the reset week, so the EOD target matc
 
 Open `https://rivermanpaul.github.io/CodexUsage/bookmarklet.html` on Mac and drag **Sync Codex Usage** to the bookmarks bar.
 
-When ChatGPT's usage menu or Codex analytics page is visible, click the bookmarklet. It reads the visible weekly remaining percentage and opens Codex Usage with that value in the URL, so the app can store it locally and stamp the refresh time.
+Start the local Mac helper:
+
+```bash
+node scripts/sync-server.mjs
+```
+
+When ChatGPT's usage menu or Codex analytics page is visible, click the bookmarklet. It reads the visible weekly remaining percentage and sends only that percent to the local helper. The helper updates `usage.json`, commits, and pushes through the Mac's existing `gh`/git credentials.
+
+The phone app fetches `usage.json` on refresh, so no ChatGPT credentials or long-lived tokens live in the public web app.

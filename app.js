@@ -2,6 +2,7 @@
   "use strict";
 
   var storageKey = "codex-budget-state-v1";
+  var remoteUsageUrl = "https://raw.githubusercontent.com/RivermanPaul/CodexUsage/main/usage.json";
   var dayMs = 24 * 60 * 60 * 1000;
   var defaults = {
     remaining: 70,
@@ -74,12 +75,20 @@
       saveState();
       window.history.replaceState(null, "", window.location.pathname);
     }
+
+    return changed;
   }
 
   function clamp(value, min, max) {
     var number = Number(value);
     if (!Number.isFinite(number)) return min;
     return Math.min(max, Math.max(min, number));
+  }
+
+  function normalizePercent(value) {
+    var number = Number(value);
+    if (!Number.isFinite(number)) return null;
+    return clamp(number, 0, 100);
   }
 
   function formatPercent(value) {
@@ -212,12 +221,55 @@
   function refreshStats() {
     window.clearTimeout(refreshTimer);
     setRefreshing(true);
-    refreshTimer = window.setTimeout(function () {
-      state.lastRefreshedAt = new Date().toISOString();
+
+    Promise.all([
+      fetchRemoteUsage(),
+      new Promise(function (resolve) {
+        refreshTimer = window.setTimeout(resolve, 550);
+      })
+    ]).then(function (results) {
+      var usage = results[0];
+      var percent = usage ? normalizePercent(usage.weeklyRemaining) : null;
+
+      if (percent === null) {
+        throw new Error("No weekly remaining value found.");
+      }
+
+      state.remaining = percent;
+      if (usage.resetAt && !Number.isNaN(new Date(usage.resetAt).getTime())) {
+        state.resetAt = usage.resetAt;
+      }
+      state.lastRefreshedAt = usage.refreshedAt || new Date().toISOString();
       saveState();
       render();
       setRefreshing(false);
-    }, 550);
+    }).catch(function () {
+      setRefreshing(false);
+      openSyncSheet();
+    });
+  }
+
+  function fetchRemoteUsage() {
+    var localUsageUrl = new URL("usage.json", window.location.href).href;
+    var urls = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+      ? [localUsageUrl, remoteUsageUrl]
+      : [remoteUsageUrl, localUsageUrl];
+
+    function tryUrl(index) {
+      if (index >= urls.length) throw new Error("Remote usage fetch failed.");
+
+      return fetch(urls[index] + "?cache=" + Date.now(), {
+        cache: "no-store",
+        credentials: "omit"
+      }).then(function (response) {
+        if (!response.ok) throw new Error("Remote usage fetch failed.");
+        return response.json();
+      }).catch(function () {
+        return tryUrl(index + 1);
+      });
+    }
+
+    return tryUrl(0);
   }
 
   function openSyncSheet() {
@@ -273,8 +325,10 @@
   syncForm.addEventListener("submit", function (event) {
     event.preventDefault();
     state.remaining = clamp(syncRemainingInput.value, 0, 100);
+    state.lastRefreshedAt = new Date().toISOString();
+    saveState();
     closeSyncSheet();
-    refreshStats();
+    render();
   });
 
   window.addEventListener("keydown", function (event) {
@@ -287,7 +341,8 @@
     });
   }
 
-  applyUrlSync();
+  var syncedFromUrl = applyUrlSync();
   ensureRefreshTime();
   render();
+  if (!syncedFromUrl) refreshStats();
 }());

@@ -2,6 +2,7 @@
   "use strict";
 
   var appUrl = "https://rivermanpaul.github.io/CodexUsage/";
+  var helperUrl = "http://127.0.0.1:8787/sync";
 
   function normalizeText(value) {
     return String(value || "")
@@ -51,10 +52,10 @@
     return;
   }
 
-  var target = appUrl + "?remaining=" + encodeURIComponent(percent) + "&source=bookmarklet&synced=" + Date.now();
+  var target = helperUrl + "?remaining=" + encodeURIComponent(percent) + "&source=bookmarklet&synced=" + Date.now();
   var opened = window.open(target, "_blank");
 
   if (!opened) {
-    window.location.href = target;
+    window.location.href = appUrl + "?remaining=" + encodeURIComponent(percent) + "&source=bookmarklet&synced=" + Date.now();
   }
 }());

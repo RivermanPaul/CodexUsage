@@ -108,10 +108,11 @@
       <ol>
         <li>Open ChatGPT and show the usage menu or Codex analytics page.</li>
         <li>Click the bookmarklet.</li>
-        <li>Codex Usage opens with the current weekly percent saved locally.</li>
+        <li>The Mac helper publishes the current weekly percent.</li>
+        <li>Codex Usage on your phone reads the published percent when refreshed.</li>
       </ol>
 
-      <p class="fine-print">The bookmarklet reads visible page text only. It does not store or transmit cookies, passwords, or tokens.</p>
+      <p class="fine-print">The bookmarklet reads visible page text only. It sends only the percent to a local helper on your Mac. It does not store or transmit cookies, passwords, or tokens.</p>
 
       <div class="code-row">
         <label for="bookmarkletCode">Manual copy</label>
@@ -136,7 +137,7 @@
             .trim();
         }
 
-        fetch("sync-bookmarklet.js?v=1")
+        fetch("sync-bookmarklet.js?v=2")
           .then(function (response) {
             if (!response.ok) throw new Error("Could not load bookmarklet source.");
             return response.text();
