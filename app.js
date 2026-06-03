@@ -13,6 +13,7 @@
   var remainingRange = document.getElementById("remainingRange");
   var dailyInput = document.getElementById("dailyInput");
   var resetInput = document.getElementById("resetInput");
+  var resetDisplay = document.getElementById("resetDisplay");
   var remainingValue = document.getElementById("remainingValue");
   var remainingBar = document.getElementById("remainingBar");
   var targetMarker = document.getElementById("targetMarker");
@@ -55,6 +56,18 @@
     return new Intl.DateTimeFormat(undefined, {
       month: "short",
       day: "numeric",
+      hour: "numeric",
+      minute: "2-digit"
+    }).format(reset);
+  }
+
+  function formatResetControl(value) {
+    var reset = new Date(value);
+    if (Number.isNaN(reset.getTime())) return "Set reset";
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
       hour: "numeric",
       minute: "2-digit"
     }).format(reset);
@@ -107,6 +120,7 @@
     remainingRange.value = String(state.remaining);
     dailyInput.value = String(state.dailyAllowance);
     resetInput.value = state.resetAt;
+    resetDisplay.textContent = formatResetControl(state.resetAt);
 
     remainingValue.textContent = formatPercent(state.remaining);
     remainingBar.style.width = state.remaining + "%";

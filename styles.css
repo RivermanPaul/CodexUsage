@@ -233,11 +233,15 @@ h1 {
 .field {
   display: grid;
   gap: 7px;
+  min-width: 0;
 }
 
 .field input {
   min-width: 0;
   width: 100%;
+  max-width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
   min-height: 48px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -248,7 +252,55 @@ h1 {
   font-weight: 720;
 }
 
+.reset-control {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  min-height: 48px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #11130f;
+  padding: 10px 12px;
+}
+
+.reset-display {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 1.05rem;
+  font-weight: 720;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reset-control input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  opacity: 0;
+  padding: 0;
+}
+
+.reset-control input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+}
+
 .field input:focus,
+.reset-control:focus-within,
 .icon-button:focus-visible,
 .chip:focus-visible,
 .range-wrap input:focus-visible {
@@ -316,6 +368,10 @@ h1 {
 
   .field-grid {
     grid-template-columns: 1fr;
+  }
+
+  .reset-display {
+    font-size: 0.95rem;
   }
 }
 

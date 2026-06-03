@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=4">
   </head>
   <body>
     <main class="app-shell">
@@ -77,9 +77,12 @@
           </label>
         </div>
 
-        <label class="field">
+        <label class="field reset-field">
           <span>Weekly reset</span>
-          <input id="resetInput" type="datetime-local">
+          <span class="reset-control">
+            <span class="reset-display" id="resetDisplay">Jun 7, 2026 at 8:33 AM</span>
+            <input id="resetInput" type="datetime-local" aria-label="Weekly reset">
+          </span>
         </label>
 
         <div class="range-wrap">
@@ -100,6 +103,6 @@
       </section>
     </main>
 
-    <script src="app.js" defer></script>
+    <script src="app.js?v=4" defer></script>
   </body>
 </html>

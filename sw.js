@@ -1,4 +1,4 @@
-var cacheName = "codex-budget-v3";
+var cacheName = "codex-budget-v4";
 var files = [
   "./",
   "index.html",
@@ -12,6 +12,7 @@ var files = [
 ];
 
 self.addEventListener("install", function (event) {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(cacheName).then(function (cache) {
       return cache.addAll(files);
@@ -27,6 +28,8 @@ self.addEventListener("activate", function (event) {
       }).map(function (key) {
         return caches.delete(key);
       }));
+    }).then(function () {
+      return self.clients.claim();
     })
   );
 });
