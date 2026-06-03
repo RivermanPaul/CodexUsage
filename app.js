@@ -25,6 +25,10 @@
   var refreshButton = document.getElementById("refreshButton");
   var refreshStatus = document.getElementById("refreshStatus");
   var refreshStatusText = document.getElementById("refreshStatusText");
+  var syncSheet = document.getElementById("syncSheet");
+  var syncForm = document.getElementById("syncForm");
+  var syncRemainingInput = document.getElementById("syncRemainingInput");
+  var syncCancel = document.getElementById("syncCancel");
 
   var state = loadState();
   var refreshTimer = null;
@@ -46,6 +50,29 @@
     if (!state.lastRefreshedAt) {
       state.lastRefreshedAt = new Date().toISOString();
       saveState();
+    }
+  }
+
+  function applyUrlSync() {
+    var params = new URLSearchParams(window.location.search);
+    var remaining = params.get("remaining") || params.get("weekly");
+    var reset = params.get("reset");
+    var changed = false;
+
+    if (remaining !== null && remaining.trim() !== "") {
+      state.remaining = clamp(remaining, 0, 100);
+      changed = true;
+    }
+
+    if (reset !== null && reset.trim() !== "" && !Number.isNaN(new Date(reset).getTime())) {
+      state.resetAt = reset;
+      changed = true;
+    }
+
+    if (changed) {
+      state.lastRefreshedAt = new Date().toISOString();
+      saveState();
+      window.history.replaceState(null, "", window.location.pathname);
     }
   }
 
@@ -193,6 +220,20 @@
     }, 550);
   }
 
+  function openSyncSheet() {
+    syncRemainingInput.value = String(state.remaining);
+    syncSheet.hidden = false;
+    window.setTimeout(function () {
+      syncRemainingInput.focus();
+      syncRemainingInput.select();
+    }, 0);
+  }
+
+  function closeSyncSheet() {
+    syncSheet.hidden = true;
+    refreshButton.focus();
+  }
+
   remainingInput.addEventListener("input", function (event) {
     setRemaining(event.target.value);
   });
@@ -221,7 +262,24 @@
     });
   });
 
-  refreshButton.addEventListener("click", refreshStats);
+  refreshButton.addEventListener("click", openSyncSheet);
+
+  syncCancel.addEventListener("click", closeSyncSheet);
+
+  syncSheet.addEventListener("click", function (event) {
+    if (event.target === syncSheet) closeSyncSheet();
+  });
+
+  syncForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    state.remaining = clamp(syncRemainingInput.value, 0, 100);
+    closeSyncSheet();
+    refreshStats();
+  });
+
+  window.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && !syncSheet.hidden) closeSyncSheet();
+  });
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () {
@@ -229,6 +287,7 @@
     });
   }
 
+  applyUrlSync();
   ensureRefreshTime();
   render();
 }());
