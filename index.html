@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#080907">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Codex Usage">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Codex Usage</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Codex</p>
+          <h1>Budget</h1>
+        </div>
+        <button class="icon-button" id="resetDefaults" type="button" aria-label="Reset saved values" title="Reset saved values">
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M3 12a9 9 0 1 0 3-6.7"></path>
+            <path d="M3 4v6h6"></path>
+          </svg>
+        </button>
+      </header>
+
+      <section class="meter-panel" aria-labelledby="remainingLabel">
+        <div class="meter-head">
+          <div>
+            <p class="label" id="remainingLabel">Weekly remaining</p>
+            <div class="remaining-line">
+              <span class="remaining-value" id="remainingValue">70%</span>
+              <span class="remaining-word">remaining</span>
+            </div>
+          </div>
+          <div class="day-pill" id="dayPill">Day 3</div>
+        </div>
+
+        <div class="bar-shell" aria-hidden="true">
+          <div class="bar-track">
+            <div class="bar-fill" id="remainingBar"></div>
+            <div class="bar-marker" id="targetMarker"></div>
+          </div>
+        </div>
+
+        <div class="status-row">
+          <div>
+            <p class="label">EOD target</p>
+            <p class="stat" id="targetValue">58%</p>
+          </div>
+          <div>
+            <p class="label">Room today</p>
+            <p class="stat" id="roomValue">12%</p>
+          </div>
+          <div>
+            <p class="label">Resets</p>
+            <p class="stat small" id="resetSummary">Jun 7</p>
+          </div>
+        </div>
+
+        <p class="pace-copy" id="paceCopy">Ahead by 12%.</p>
+      </section>
+
+      <section class="control-panel" aria-label="Budget controls">
+        <div class="field-grid">
+          <label class="field">
+            <span>Remaining</span>
+            <input id="remainingInput" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="70">
+          </label>
+          <label class="field">
+            <span>Daily</span>
+            <input id="dailyInput" type="number" inputmode="decimal" min="1" max="25" step="0.1" value="14">
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Weekly reset</span>
+          <input id="resetInput" type="datetime-local">
+        </label>
+
+        <div class="range-wrap">
+          <input id="remainingRange" type="range" min="0" max="100" step="0.5" value="70" aria-label="Remaining percentage">
+          <div class="range-labels" aria-hidden="true">
+            <span>0</span>
+            <span>50</span>
+            <span>100</span>
+          </div>
+        </div>
+
+        <div class="quick-actions" aria-label="Quick adjustments">
+          <button class="chip" type="button" data-adjust="-5">-5</button>
+          <button class="chip" type="button" data-adjust="-1">-1</button>
+          <button class="chip" type="button" data-adjust="1">+1</button>
+          <button class="chip" type="button" data-adjust="5">+5</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>
