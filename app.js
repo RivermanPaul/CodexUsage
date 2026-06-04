@@ -52,6 +52,7 @@
   function ensureRefreshTime() {
     if (!state.lastRefreshedAt) {
       state.lastRefreshedAt = new Date().toISOString();
+      state.sourceRefreshedAt = state.lastRefreshedAt;
       saveState();
     }
   }
@@ -61,6 +62,7 @@
     var hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     var remaining = params.get("remaining") || params.get("weekly");
     var reset = params.get("reset");
+    var synced = params.get("synced");
     var helper = hashParams.get("helper");
     var token = hashParams.get("token");
     var mode = hashParams.get("mode");
@@ -98,7 +100,10 @@
     }
 
     if (changed) {
-      if (usageChanged) state.lastRefreshedAt = new Date().toISOString();
+      if (usageChanged) {
+        state.sourceRefreshedAt = normalizeTimestamp(synced) || new Date().toISOString();
+        state.lastRefreshedAt = new Date().toISOString();
+      }
       saveState();
       window.history.replaceState(null, "", window.location.pathname);
     }
@@ -116,6 +121,15 @@
     var number = Number(value);
     if (!Number.isFinite(number)) return null;
     return clamp(number, 0, 100);
+  }
+
+  function normalizeTimestamp(value) {
+    if (value === null || value === undefined || value === "") return "";
+
+    var asNumber = Number(value);
+    var timestamp = Number.isFinite(asNumber) ? new Date(asNumber) : new Date(value);
+    if (Number.isNaN(timestamp.getTime())) return "";
+    return timestamp.toISOString();
   }
 
   function normalizeMacPollUrl(value) {
@@ -170,10 +184,11 @@
 
   function formatRefreshTime(value) {
     var refreshed = new Date(value);
-    if (Number.isNaN(refreshed.getTime())) return "Last refreshed just now";
-    return "Last refreshed " + new Intl.DateTimeFormat(undefined, {
+    if (Number.isNaN(refreshed.getTime())) return "Last checked just now";
+    return "Last checked " + new Intl.DateTimeFormat(undefined, {
       hour: "numeric",
-      minute: "2-digit"
+      minute: "2-digit",
+      second: "2-digit"
     }).format(refreshed);
   }
 
@@ -254,8 +269,10 @@
   }
 
   function setRemaining(value) {
+    var now = new Date().toISOString();
     state.remaining = clamp(value, 0, 100);
-    state.lastRefreshedAt = new Date().toISOString();
+    state.sourceRefreshedAt = now;
+    state.lastRefreshedAt = now;
     saveState();
     render();
   }
@@ -302,7 +319,8 @@
       if (usage.resetAt && !Number.isNaN(new Date(usage.resetAt).getTime())) {
         state.resetAt = usage.resetAt;
       }
-      state.lastRefreshedAt = usage.refreshedAt || new Date().toISOString();
+      state.sourceRefreshedAt = usage.refreshedAt || state.sourceRefreshedAt || "";
+      state.lastRefreshedAt = new Date().toISOString();
       saveState();
       render();
       setRefreshing(false);
@@ -434,15 +452,19 @@
   });
 
   dailyInput.addEventListener("input", function (event) {
+    var now = new Date().toISOString();
     state.dailyAllowance = clamp(event.target.value, 1, 25);
-    state.lastRefreshedAt = new Date().toISOString();
+    state.sourceRefreshedAt = now;
+    state.lastRefreshedAt = now;
     saveState();
     render();
   });
 
   resetInput.addEventListener("input", function (event) {
+    var now = new Date().toISOString();
     state.resetAt = event.target.value;
-    state.lastRefreshedAt = new Date().toISOString();
+    state.sourceRefreshedAt = now;
+    state.lastRefreshedAt = now;
     saveState();
     render();
   });
@@ -465,8 +487,10 @@
 
   syncForm.addEventListener("submit", function (event) {
     event.preventDefault();
+    var now = new Date().toISOString();
     state.remaining = clamp(syncRemainingInput.value, 0, 100);
-    state.lastRefreshedAt = new Date().toISOString();
+    state.sourceRefreshedAt = now;
+    state.lastRefreshedAt = now;
     saveState();
     closeSyncSheet();
     render();

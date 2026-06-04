@@ -32,6 +32,8 @@ When ChatGPT's usage menu or Codex analytics page is visible, click the bookmark
 
 The phone app fetches `usage.json` on refresh, so no ChatGPT credentials or long-lived tokens live in the public web app.
 
+The visible refresh status shows the time this device last checked successfully, including seconds, so repeated refreshes are easy to confirm even when the weekly percentage does not change.
+
 ## Mac polling
 
 The helper also exposes `GET /poll`. It takes a Mac screenshot, OCRs the visible ChatGPT usage menu or Codex analytics page with Tesseract, extracts the weekly remaining percentage, then updates, commits, and pushes `usage.json`.
