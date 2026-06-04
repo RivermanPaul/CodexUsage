@@ -31,3 +31,17 @@ node scripts/sync-server.mjs
 When ChatGPT's usage menu or Codex analytics page is visible, click the bookmarklet. It reads the visible weekly remaining percentage and sends only that percent to the local helper. The helper updates `usage.json`, commits, and pushes through the Mac's existing `gh`/git credentials.
 
 The phone app fetches `usage.json` on refresh, so no ChatGPT credentials or long-lived tokens live in the public web app.
+
+## Mac polling
+
+The helper also exposes `GET /poll`. It takes a Mac screenshot, OCRs the visible ChatGPT usage menu or Codex analytics page with Tesseract, extracts the weekly remaining percentage, then updates, commits, and pushes `usage.json`.
+
+On Mac, tapping refresh tries `http://127.0.0.1:8787/poll` before reading the published value. Other devices only poll a Mac helper after a helper URL is stored locally on that device, for example through a private URL fragment:
+
+```text
+https://rivermanpaul.github.io/CodexUsage/#helper=http%3A%2F%2FMac-host.local%3A8787%2Fpoll&token=local-device-token
+```
+
+The token is stored in that browser's local storage and is not part of the public repo.
+
+With a configured helper, tapping refresh on a phone briefly navigates to the Mac helper. After the Mac OCR sync succeeds, the helper redirects back to the app with the fresh weekly percentage.

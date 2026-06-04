@@ -4,6 +4,7 @@
   var storageKey = "codex-budget-state-v1";
   var remoteUsageApiUrl = "https://api.github.com/repos/RivermanPaul/CodexUsage/contents/usage.json?ref=main";
   var remoteUsageUrl = "https://raw.githubusercontent.com/RivermanPaul/CodexUsage/main/usage.json";
+  var defaultMacPollUrl = "http://127.0.0.1:8787/poll";
   var dayMs = 24 * 60 * 60 * 1000;
   var defaults = {
     remaining: 70,
@@ -57,27 +58,52 @@
 
   function applyUrlSync() {
     var params = new URLSearchParams(window.location.search);
+    var hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     var remaining = params.get("remaining") || params.get("weekly");
     var reset = params.get("reset");
+    var helper = hashParams.get("helper");
+    var token = hashParams.get("token");
+    var mode = hashParams.get("mode");
     var changed = false;
+    var usageChanged = false;
 
     if (remaining !== null && remaining.trim() !== "") {
       state.remaining = clamp(remaining, 0, 100);
       changed = true;
+      usageChanged = true;
     }
 
     if (reset !== null && reset.trim() !== "" && !Number.isNaN(new Date(reset).getTime())) {
       state.resetAt = reset;
       changed = true;
+      usageChanged = true;
+    }
+
+    if (helper !== null && helper.trim() !== "") {
+      var helperUrl = normalizeMacPollUrl(helper);
+      if (helperUrl) {
+        state.macPollUrl = helperUrl;
+        changed = true;
+      }
+    }
+
+    if (token !== null && token.trim() !== "") {
+      state.macPollToken = token.trim();
+      changed = true;
+    }
+
+    if (mode !== null && mode.trim() !== "") {
+      state.macPollMode = mode.trim();
+      changed = true;
     }
 
     if (changed) {
-      state.lastRefreshedAt = new Date().toISOString();
+      if (usageChanged) state.lastRefreshedAt = new Date().toISOString();
       saveState();
       window.history.replaceState(null, "", window.location.pathname);
     }
 
-    return changed;
+    return usageChanged;
   }
 
   function clamp(value, min, max) {
@@ -90,6 +116,28 @@
     var number = Number(value);
     if (!Number.isFinite(number)) return null;
     return clamp(number, 0, 100);
+  }
+
+  function normalizeMacPollUrl(value) {
+    try {
+      var url = new URL(value);
+      if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+      if (!url.pathname || url.pathname === "/") url.pathname = "/poll";
+      return url.href;
+    } catch (_error) {
+      return "";
+    }
+  }
+
+  function getMacPollUrl() {
+    if (state.macPollUrl) return state.macPollUrl;
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") return defaultMacPollUrl;
+    if (navigator.userAgent.indexOf("Macintosh") !== -1 && navigator.maxTouchPoints < 2) return defaultMacPollUrl;
+    return "";
+  }
+
+  function shouldNavigateMacPoll() {
+    return Boolean(state.macPollUrl) && state.macPollMode !== "fetch";
   }
 
   function formatPercent(value) {
@@ -212,19 +260,33 @@
     render();
   }
 
-  function setRefreshing(isRefreshing) {
+  function setRefreshing(isRefreshing, message) {
     refreshButton.classList.toggle("is-refreshing", isRefreshing);
     refreshStatus.classList.toggle("is-refreshing", isRefreshing);
     refreshButton.disabled = isRefreshing;
-    refreshStatusText.textContent = isRefreshing ? "Refreshing..." : formatRefreshTime(state.lastRefreshedAt);
+    refreshStatusText.textContent = isRefreshing ? (message || "Refreshing...") : formatRefreshTime(state.lastRefreshedAt);
   }
 
-  function refreshStats() {
+  function refreshStats(allowMacPoll) {
     window.clearTimeout(refreshTimer);
-    setRefreshing(true);
+
+    if (allowMacPoll && shouldNavigateMacPoll()) {
+      navigateToMacPoll();
+      return;
+    }
+
+    setRefreshing(true, allowMacPoll && getMacPollUrl() ? "Polling Mac..." : "Fetching latest...");
 
     Promise.all([
-      fetchRemoteUsage(),
+      (allowMacPoll ? pollMacHelper() : Promise.resolve(null)).then(function (macUsage) {
+        setRefreshing(true, "Fetching latest...");
+        return fetchRemoteUsage().then(function (remoteUsage) {
+          return newestUsage(macUsage, remoteUsage);
+        }).catch(function () {
+          if (macUsage) return macUsage;
+          throw new Error("Remote usage fetch failed.");
+        });
+      }),
       new Promise(function (resolve) {
         refreshTimer = window.setTimeout(resolve, 550);
       })
@@ -248,6 +310,63 @@
       setRefreshing(false);
       openSyncSheet();
     });
+  }
+
+  function newestUsage(first, second) {
+    if (!first) return second;
+    if (!second) return first;
+
+    var firstTime = new Date(first.refreshedAt || 0).getTime();
+    var secondTime = new Date(second.refreshedAt || 0).getTime();
+    return firstTime >= secondTime ? first : second;
+  }
+
+  function pollMacHelper() {
+    var pollUrl = getMacPollUrl();
+    if (!pollUrl) return Promise.resolve(null);
+
+    var url = new URL(pollUrl);
+    url.searchParams.set("format", "json");
+    url.searchParams.set("cache", Date.now());
+    if (state.macPollToken) url.searchParams.set("token", state.macPollToken);
+
+    var controller = window.AbortController ? new AbortController() : null;
+    var timeout = window.setTimeout(function () {
+      if (controller) controller.abort();
+    }, 7000);
+
+    return fetch(url.href, {
+      cache: "no-store",
+      credentials: "omit",
+      signal: controller ? controller.signal : undefined
+    }).then(function (response) {
+      if (!response.ok) throw new Error("Mac helper poll failed.");
+      return response.json();
+    }).then(function (data) {
+      return data && data.usage ? data.usage : data;
+    }).catch(function () {
+      return null;
+    }).finally(function () {
+      window.clearTimeout(timeout);
+    });
+  }
+
+  function navigateToMacPoll() {
+    var pollUrl = getMacPollUrl();
+    if (!pollUrl) {
+      refreshStats(false);
+      return;
+    }
+
+    setRefreshing(true, "Polling Mac...");
+
+    var url = new URL(pollUrl);
+    var returnUrl = new URL(window.location.href);
+    returnUrl.hash = "";
+    url.searchParams.set("return", returnUrl.href);
+    url.searchParams.set("cache", Date.now());
+    if (state.macPollToken) url.searchParams.set("token", state.macPollToken);
+    window.location.href = url.href;
   }
 
   function fetchRemoteUsage() {
@@ -334,7 +453,9 @@
     });
   });
 
-  refreshButton.addEventListener("click", openSyncSheet);
+  refreshButton.addEventListener("click", function () {
+    refreshStats(true);
+  });
 
   syncCancel.addEventListener("click", closeSyncSheet);
 
@@ -364,5 +485,5 @@
   var syncedFromUrl = applyUrlSync();
   ensureRefreshTime();
   render();
-  if (!syncedFromUrl) refreshStats();
+  if (!syncedFromUrl) refreshStats(false);
 }());
