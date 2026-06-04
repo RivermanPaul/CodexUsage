@@ -43,7 +43,7 @@ sleep 1
 
 if curl -fsS "http://127.0.0.1:$PORT/health" >/dev/null; then
   echo "Codex Usage helper is running in tmux session '$SESSION_NAME' on port $PORT."
-  echo "Phone refresh polling can now call this Mac while the usage menu is visible."
+  echo "Phone refresh polling can now ask this Mac to open and OCR the Codex usage menu."
   echo "Logs: /tmp/codex-usage-sync-helper.log and /tmp/codex-usage-sync-helper.err"
 else
   echo "Codex Usage helper did not answer its health check."

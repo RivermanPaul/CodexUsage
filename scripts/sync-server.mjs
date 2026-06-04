@@ -12,8 +12,11 @@ const usagePath = join(rootDir, "usage.json");
 const port = Number(process.env.CODEX_USAGE_SYNC_PORT || 8787);
 const host = process.env.CODEX_USAGE_SYNC_HOST || "127.0.0.1";
 const tesseractCommand = process.env.CODEX_USAGE_TESSERACT || "/opt/homebrew/bin/tesseract";
+const cliclickCommand = process.env.CODEX_USAGE_CLICLICK || "/opt/homebrew/bin/cliclick";
 const syncTokenPath = process.env.CODEX_USAGE_SYNC_TOKEN_FILE || join(homedir(), "Library", "Application Support", "CodexUsage", "sync-token");
 const syncToken = loadSyncToken();
+const revealSource = process.env.CODEX_USAGE_REVEAL_SOURCE !== "0";
+const codexCaptureBounds = parseCodexCaptureBounds(process.env.CODEX_USAGE_CODEX_BOUNDS || "116,147,1280,820");
 const dryRun = process.env.CODEX_USAGE_DRY_RUN === "1";
 
 function loadSyncToken() {
@@ -24,6 +27,19 @@ function loadSyncToken() {
   } catch (_error) {
     return "";
   }
+}
+
+function parseCodexCaptureBounds(value) {
+  const fallback = { x: 116, y: 147, width: 1280, height: 820 };
+  const parts = String(value || "").split(",").map((part) => Number(part.trim()));
+  if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part))) return fallback;
+
+  return {
+    x: Math.round(parts[0]),
+    y: Math.round(parts[1]),
+    width: Math.max(640, Math.round(parts[2])),
+    height: Math.max(480, Math.round(parts[3]))
+  };
 }
 
 function run(command, args) {
@@ -82,7 +98,7 @@ function normalizeText(value) {
 function findWeeklyPercent(text) {
   const normalized = normalizeText(text);
   const patterns = [
-    /Usage remaining[\s\S]{0,420}?Weekly\s+(\d{1,3}(?:\.\d+)?)\s*%/i,
+    /Usage remaining[\s\S]{0,420}?Weekl\w*\s+(\d{1,3}(?:\.\d+)?)\s*%/i,
     /Weekly usage limit[\s\S]{0,220}?(\d{1,3}(?:\.\d+)?)\s*%\s*remaining/i
   ];
 
@@ -170,7 +186,7 @@ function resetFromMatch(match, now = new Date()) {
 function findWeeklyReset(text, now = new Date()) {
   const normalized = normalizeText(text);
   const patterns = [
-    /Usage remaining[\s\S]{0,520}?Weekly\s+\d{1,3}(?:\.\d+)?\s*%\s+([A-Z][a-z]{2})\s*(\d{1,2})(?:,?\s+(\d{4}))?(?:\s+(?:at\s+)?(\d{1,2}:\d{2})\s*([AP]M))?/i,
+    /Usage remaining[\s\S]{0,520}?Weekl\w*\s+\d{1,3}(?:\.\d+)?\s*%\s+([A-Z][a-z]{2})\s*(\d{1,2})(?:,?\s+(\d{4}))?(?:\s+(?:at\s+)?(\d{1,2}:\d{2})\s*([AP]M))?/i,
     /Weekly usage limit[\s\S]{0,320}?Resets\s+([A-Z][a-z]{2})\s*(\d{1,2})(?:,?\s+(\d{4}))?(?:\s+(?:at\s+)?(\d{1,2}:\d{2})\s*([AP]M))?/i
   ];
 
@@ -263,7 +279,57 @@ async function captureScreenshot(screenshotPath) {
   throw new Error(`Could not capture Mac screen. ${errors.join(" ")}`);
 }
 
-async function pollUsageFromMac() {
+async function getCodexWindowBounds() {
+  const { x, y, width, height } = codexCaptureBounds;
+  const script = `
+tell application "Codex" to activate
+delay 0.2
+tell application "System Events"
+  tell process "Codex"
+    set frontmost to true
+    set position of window 1 to {${x}, ${y}}
+    set size of window 1 to {${width}, ${height}}
+    delay 0.1
+    set windowPosition to position of window 1
+    set windowSize to size of window 1
+    return (item 1 of windowPosition as text) & "," & (item 2 of windowPosition as text) & "," & (item 1 of windowSize as text) & "," & (item 2 of windowSize as text)
+  end tell
+end tell`;
+  const result = await run("/usr/bin/osascript", ["-e", script]);
+  const values = result.stdout.trim().split(",").map(Number);
+  if (values.length !== 4 || values.some((value) => !Number.isFinite(value))) {
+    throw new Error("Could not read Codex window bounds.");
+  }
+
+  return {
+    x: values[0],
+    y: values[1],
+    width: values[2],
+    height: values[3]
+  };
+}
+
+async function clickPoint(x, y) {
+  await run(cliclickCommand, [`c:${Math.round(x)},${Math.round(y)}`]);
+}
+
+async function revealCodexUsageMenu() {
+  const bounds = await getCodexWindowBounds();
+
+  await run("/usr/bin/osascript", [
+    "-e",
+    `tell application "System Events" to tell process "Codex" to key code 53`
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 250));
+
+  await clickPoint(bounds.x + 44, bounds.y + bounds.height - 23);
+  await new Promise((resolve) => setTimeout(resolve, 250));
+
+  await clickPoint(bounds.x + 92, bounds.y + bounds.height - 88);
+  await new Promise((resolve) => setTimeout(resolve, 700));
+}
+
+async function readUsageFromMacScreen() {
   const screenshotPath = join(tmpdir(), `codex-usage-${process.pid}-${Date.now()}.png`);
 
   try {
@@ -272,14 +338,35 @@ async function pollUsageFromMac() {
     const weeklyRemaining = findWeeklyPercent(text);
     const reset = findWeeklyReset(text);
 
-    if (weeklyRemaining === null) {
-      throw new Error("Could not find weekly usage in the visible Mac screen. Open the ChatGPT usage menu or Codex analytics page, then try again.");
-    }
-
-    return updateUsage(weeklyRemaining, "mac-ocr", reset);
+    return { weeklyRemaining, reset };
   } finally {
     unlink(screenshotPath).catch(() => {});
   }
+}
+
+async function pollUsageFromMac() {
+  let revealError = null;
+  if (revealSource) {
+    try {
+      await revealCodexUsageMenu();
+    } catch (error) {
+      revealError = error;
+    }
+  }
+
+  let usage = await readUsageFromMacScreen();
+
+  if (usage.weeklyRemaining === null && !revealSource) {
+    await revealCodexUsageMenu();
+    usage = await readUsageFromMacScreen();
+  }
+
+  if (usage.weeklyRemaining === null) {
+    const reason = revealError ? ` Source reveal failed: ${revealError.message}` : "";
+    throw new Error(`Could not find weekly usage in the Mac usage menu.${reason}`);
+  }
+
+  return updateUsage(usage.weeklyRemaining, "mac-ocr", usage.reset);
 }
 
 async function pollUsageFromImage(imagePath) {
