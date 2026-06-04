@@ -7,6 +7,16 @@ final class UsageScraper: NSObject, ObservableObject {
 
     let webView: WKWebView
 
+    var isShowingUsagePage: Bool {
+        guard let url = webView.url,
+              let host = url.host?.lowercased() else {
+            return false
+        }
+
+        return host.hasSuffix("chatgpt.com")
+            && url.path.lowercased().contains("/codex/cloud/settings/analytics")
+    }
+
     override init() {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
@@ -40,13 +50,22 @@ final class UsageScraper: NSObject, ObservableObject {
         return try await scrapeWithRetries()
     }
 
+    func refreshCurrentUsagePageAndScrape() async throws -> ScrapedUsage {
+        guard isShowingUsagePage else {
+            return try await refreshAndScrape()
+        }
+
+        webView.stopLoading()
+        webView.reloadFromOrigin()
+        try await waitForReadablePage()
+        return try await scrapeWithRetries()
+    }
+
     func scrapeVisiblePage() async throws -> ScrapedUsage {
         try await scrapeWithRetries()
     }
 
     private func scrapeWithRetries() async throws -> ScrapedUsage {
-        var sawLogin = false
-
         for _ in 0..<25 {
             let page = try await inspectPage()
             if let percent = page.percent {
@@ -58,11 +77,14 @@ final class UsageScraper: NSObject, ObservableObject {
                 )
             }
 
-            sawLogin = sawLogin || page.needsLogin
+            if page.needsLogin {
+                throw UsageScrapeError.needsLogin
+            }
+
             try await Task.sleep(nanoseconds: 1_000_000_000)
         }
 
-        throw sawLogin ? UsageScrapeError.needsLogin : UsageScrapeError.noUsageFound
+        throw UsageScrapeError.noUsageFound
     }
 
     private static func urlForUsageLoad(forceReload: Bool) -> URL {

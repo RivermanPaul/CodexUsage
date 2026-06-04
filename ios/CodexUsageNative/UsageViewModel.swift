@@ -12,6 +12,8 @@ final class UsageViewModel: ObservableObject {
     let scraper = UsageScraper()
 
     private let storageKey = "CodexUsageNative.snapshot.v1"
+    private var lastForegroundRefreshAt: Date?
+    private var waitingForLogin = false
 
     init() {
         if let data = UserDefaults.standard.data(forKey: storageKey),
@@ -39,30 +41,59 @@ final class UsageViewModel: ObservableObject {
         cycle().reset
     }
 
+    func appBecameActive() {
+        guard !isRefreshing else { return }
+
+        if waitingForLogin && showBrowser && !scraper.isShowingUsagePage {
+            return
+        }
+
+        let now = Date()
+        if let lastForegroundRefreshAt,
+           now.timeIntervalSince(lastForegroundRefreshAt) < 1 {
+            return
+        }
+
+        lastForegroundRefreshAt = now
+        openSessionAndRefresh()
+    }
+
     func refresh() {
         guard !isRefreshing else { return }
+        openSessionAndRefresh()
+    }
+
+    private func openSessionAndRefresh() {
         isRefreshing = true
         errorText = nil
-        statusText = "Checking ChatGPT..."
+        waitingForLogin = false
+        showBrowser = true
+        statusText = scraper.isShowingUsagePage ? "Refreshing usage page..." : "Opening ChatGPT..."
 
         Task {
             do {
-                let usage = try await scraper.refreshAndScrape()
+                let usage = scraper.isShowingUsagePage
+                    ? try await scraper.refreshCurrentUsagePageAndScrape()
+                    : try await scraper.refreshAndScrape()
                 apply(usage)
+                showBrowser = false
             } catch UsageScrapeError.needsLogin {
                 isRefreshing = false
+                waitingForLogin = true
                 errorText = UsageScrapeError.needsLogin.localizedDescription
                 statusText = "Login required"
                 showBrowser = true
             } catch {
                 isRefreshing = false
                 errorText = error.localizedDescription
-                updateStatus()
+                statusText = "Refresh failed"
+                showBrowser = true
             }
         }
     }
 
     func loadUsagePageForLogin() {
+        waitingForLogin = false
         scraper.loadUsagePage()
         showBrowser = true
     }
@@ -77,7 +108,13 @@ final class UsageViewModel: ObservableObject {
             do {
                 let usage = try await scraper.scrapeVisiblePage()
                 apply(usage)
+                waitingForLogin = false
                 showBrowser = false
+            } catch UsageScrapeError.needsLogin {
+                isRefreshing = false
+                waitingForLogin = true
+                errorText = UsageScrapeError.needsLogin.localizedDescription
+                statusText = "Login required"
             } catch {
                 isRefreshing = false
                 errorText = error.localizedDescription

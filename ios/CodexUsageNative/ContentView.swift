@@ -3,6 +3,7 @@ import UIKit
 
 struct ContentView: View {
     @EnvironmentObject private var model: UsageViewModel
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -33,8 +34,11 @@ struct ContentView: View {
                 .environmentObject(model)
         }
         .onAppear {
-            if model.snapshot.lastCheckedAt == nil {
-                model.refresh()
+            model.appBecameActive()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                model.appBecameActive()
             }
         }
     }
@@ -51,22 +55,6 @@ struct ContentView: View {
             }
 
             Spacer()
-
-            Button(action: model.refresh) {
-                ZStack {
-                    Image(systemName: "arrow.clockwise")
-                        .opacity(model.isRefreshing ? 0 : 1)
-                    if model.isRefreshing {
-                        ProgressView()
-                            .tint(.white)
-                    }
-                }
-                .frame(width: 48, height: 48)
-            }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.roundedRectangle(radius: 8))
-            .disabled(model.isRefreshing)
-            .accessibilityLabel("Refresh usage")
         }
     }
 
@@ -236,9 +224,6 @@ struct LoginBrowserView: View {
                         .disabled(model.isRefreshing)
                     }
                 }
-        }
-        .onAppear {
-            model.scraper.loadUsagePage()
         }
     }
 }
