@@ -33,14 +33,14 @@ final class UsageViewModel: ObservableObject {
         min(100, max(0, 100 - Double(cycleDay) * snapshot.dailyAllowance))
     }
 
-    func targetRemaining(forDayBoundary day: Int) -> Double {
+    func weekTimeRemaining(forDayBoundary day: Int) -> Double {
         let day = min(7, max(0, day))
-        return min(100, max(0, 100 - Double(day) * snapshot.dailyAllowance))
+        return min(100, max(0, 100 - Double(day) * (100 / 7)))
     }
 
-    func currentTargetRemaining(at date: Date = Date()) -> Double {
+    func currentWeekTimeRemaining(at date: Date = Date()) -> Double {
         let progress = cycle(now: date).progress
-        return min(100, max(0, 100 - progress * 7 * snapshot.dailyAllowance))
+        return min(100, max(0, 100 - progress * 100))
     }
 
     var roomToday: Double {

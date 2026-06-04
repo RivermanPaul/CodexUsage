@@ -190,7 +190,7 @@ struct ContentView: View {
                 let barY: CGFloat = 18
                 let fillWidth = xPosition(for: model.snapshot.weeklyRemaining, in: width)
                 let eodX = clampedXPosition(for: model.targetRemaining, in: width, inset: 2)
-                let nowX = clampedXPosition(for: model.currentTargetRemaining(at: context.date), in: width, inset: 8)
+                let nowX = clampedXPosition(for: model.currentWeekTimeRemaining(at: context.date), in: width, inset: 8)
 
                 ZStack(alignment: .topLeading) {
                     Capsule()
@@ -208,7 +208,7 @@ struct ContentView: View {
                             .fill(Color.black.opacity(day == 0 || day == 7 ? 0.34 : 0.22))
                             .frame(width: day == 0 || day == 7 ? 2 : 1, height: day == 0 || day == 7 ? 19 : 13)
                             .position(
-                                x: clampedXPosition(for: model.targetRemaining(forDayBoundary: day), in: width, inset: 2),
+                                x: clampedXPosition(for: model.weekTimeRemaining(forDayBoundary: day), in: width, inset: 2),
                                 y: barY
                             )
                     }
