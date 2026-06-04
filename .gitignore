@@ -7,3 +7,7 @@ auth.json
 *.log
 artifacts/
 node_modules/
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
