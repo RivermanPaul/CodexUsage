@@ -25,18 +25,20 @@ Open `https://rivermanpaul.github.io/CodexUsage/bookmarklet.html` on Mac and dra
 Start the local Mac helper:
 
 ```bash
-node scripts/sync-server.mjs
+./scripts/start-interactive-helper.command
 ```
 
 When ChatGPT's usage menu or Codex analytics page is visible, click the bookmarklet. It reads the visible weekly remaining percentage and sends only that percent to the local helper. The helper updates `usage.json`, commits, and pushes through the Mac's existing `gh`/git credentials.
 
 The phone app fetches `usage.json` on refresh, so no ChatGPT credentials or long-lived tokens live in the public web app.
 
-The visible refresh status shows the time this device last checked successfully, including seconds, so repeated refreshes are easy to confirm even when the weekly percentage does not change.
+The visible refresh status shows both the time this device last checked successfully and the source data timestamp, so stale published data is easy to spot even when the weekly percentage does not change.
 
 ## Mac polling
 
 The helper also exposes `GET /poll`. It takes a Mac screenshot, OCRs the visible ChatGPT usage menu or Codex analytics page with Tesseract, extracts the weekly remaining percentage, then updates, commits, and pushes `usage.json`.
+
+The helper is started in a `tmux` session so it can keep running while still being able to capture the logged-in user's screen. A normal LaunchAgent can serve HTTP, but it cannot reliably capture the display for OCR.
 
 On Mac, tapping refresh tries `http://127.0.0.1:8787/poll` before reading the published value. Other devices only poll a Mac helper after a helper URL is stored locally on that device, for example through a private URL fragment:
 

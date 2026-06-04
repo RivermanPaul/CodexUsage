@@ -182,14 +182,32 @@
     }).format(reset);
   }
 
-  function formatRefreshTime(value) {
+  function isSameLocalDay(first, second) {
+    return first.getFullYear() === second.getFullYear()
+      && first.getMonth() === second.getMonth()
+      && first.getDate() === second.getDate();
+  }
+
+  function formatStatusDate(value, now) {
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+
+    var options = isSameLocalDay(date, now)
+      ? { hour: "numeric", minute: "2-digit", second: "2-digit" }
+      : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" };
+
+    return new Intl.DateTimeFormat(undefined, options).format(date);
+  }
+
+  function formatRefreshTime(value, sourceValue) {
+    var now = new Date();
     var refreshed = new Date(value);
     if (Number.isNaN(refreshed.getTime())) return "Last checked just now";
-    return "Last checked " + new Intl.DateTimeFormat(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-      second: "2-digit"
-    }).format(refreshed);
+
+    var text = "Checked " + formatStatusDate(refreshed, now);
+    var sourceText = formatStatusDate(sourceValue, now);
+    if (sourceText) text += " · Data " + sourceText;
+    return text;
   }
 
   function toLocalInputValue(date) {
@@ -240,7 +258,7 @@
     dailyInput.value = String(state.dailyAllowance);
     resetInput.value = state.resetAt;
     resetDisplay.textContent = formatResetControl(state.resetAt);
-    refreshStatusText.textContent = formatRefreshTime(state.lastRefreshedAt);
+    refreshStatusText.textContent = formatRefreshTime(state.lastRefreshedAt, state.sourceRefreshedAt);
 
     remainingValue.textContent = formatPercent(state.remaining);
     remainingBar.style.width = state.remaining + "%";
@@ -281,7 +299,7 @@
     refreshButton.classList.toggle("is-refreshing", isRefreshing);
     refreshStatus.classList.toggle("is-refreshing", isRefreshing);
     refreshButton.disabled = isRefreshing;
-    refreshStatusText.textContent = isRefreshing ? (message || "Refreshing...") : formatRefreshTime(state.lastRefreshedAt);
+    refreshStatusText.textContent = isRefreshing ? (message || "Refreshing...") : formatRefreshTime(state.lastRefreshedAt, state.sourceRefreshedAt);
   }
 
   function refreshStats(allowMacPoll) {

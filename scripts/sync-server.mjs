@@ -40,6 +40,10 @@ function run(command, args) {
   });
 }
 
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
 function normalizePercent(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return null;
@@ -130,11 +134,31 @@ async function readOcrText(imagePath) {
   return result.stdout;
 }
 
+async function captureScreenshot(screenshotPath) {
+  const attempts = [
+    ["/usr/sbin/screencapture", ["-x", screenshotPath]],
+    ["/bin/launchctl", ["asuser", String(process.getuid()), "/usr/sbin/screencapture", "-x", screenshotPath]],
+    ["/usr/bin/osascript", ["-e", `do shell script "/usr/sbin/screencapture -x ${shellQuote(screenshotPath)}"`]]
+  ];
+  const errors = [];
+
+  for (const [command, args] of attempts) {
+    try {
+      await run(command, args);
+      return;
+    } catch (error) {
+      errors.push(`${command}: ${String(error.stderr || error.message || error).trim()}`);
+    }
+  }
+
+  throw new Error(`Could not capture Mac screen. ${errors.join(" ")}`);
+}
+
 async function pollUsageFromMac() {
   const screenshotPath = join(tmpdir(), `codex-usage-${process.pid}-${Date.now()}.png`);
 
   try {
-    await run("screencapture", ["-x", screenshotPath]);
+    await captureScreenshot(screenshotPath);
     const text = await readOcrText(screenshotPath);
     const weeklyRemaining = findWeeklyPercent(text);
 
