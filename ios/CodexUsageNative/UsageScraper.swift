@@ -19,14 +19,24 @@ final class UsageScraper: NSObject, ObservableObject {
     }
 
     func loadUsagePage() {
-        var request = URLRequest(url: Self.usageURL)
+        loadUsagePage(forceReload: false)
+    }
+
+    private func loadUsagePage(forceReload: Bool) {
+        var request = URLRequest(url: Self.urlForUsageLoad(forceReload: forceReload))
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        if forceReload {
+            request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+            request.setValue("no-cache", forHTTPHeaderField: "Pragma")
+        }
+
+        webView.stopLoading()
         webView.load(request)
     }
 
     func refreshAndScrape() async throws -> ScrapedUsage {
-        loadUsagePage()
-        try await Task.sleep(nanoseconds: 2_000_000_000)
+        loadUsagePage(forceReload: true)
+        try await waitForReadablePage()
         return try await scrapeWithRetries()
     }
 
@@ -37,7 +47,7 @@ final class UsageScraper: NSObject, ObservableObject {
     private func scrapeWithRetries() async throws -> ScrapedUsage {
         var sawLogin = false
 
-        for _ in 0..<15 {
+        for _ in 0..<25 {
             let page = try await inspectPage()
             if let percent = page.percent {
                 return ScrapedUsage(
@@ -55,6 +65,48 @@ final class UsageScraper: NSObject, ObservableObject {
         throw sawLogin ? UsageScrapeError.needsLogin : UsageScrapeError.noUsageFound
     }
 
+    private static func urlForUsageLoad(forceReload: Bool) -> URL {
+        guard forceReload,
+              var components = URLComponents(url: usageURL, resolvingAgainstBaseURL: false) else {
+            return usageURL
+        }
+
+        var queryItems = components.queryItems ?? []
+        queryItems.removeAll { $0.name == "codexUsageRefresh" }
+        queryItems.append(URLQueryItem(name: "codexUsageRefresh", value: String(Int(Date().timeIntervalSince1970 * 1000))))
+        components.queryItems = queryItems
+        components.fragment = "usage"
+        return components.url ?? usageURL
+    }
+
+    private func waitForReadablePage() async throws {
+        for _ in 0..<40 {
+            try Task.checkCancellation()
+
+            let readyValue = try? await evaluate("document.readyState")
+            let readyState = readyValue as? String
+            if readyState == "interactive" || readyState == "complete" {
+                break
+            }
+
+            try await Task.sleep(nanoseconds: 250_000_000)
+        }
+
+        for _ in 0..<12 {
+            try Task.checkCancellation()
+
+            let textLengthValue = try? await evaluate("document.body ? document.body.innerText.length : 0")
+            let textLength = (textLengthValue as? NSNumber)?.intValue ?? 0
+            if textLength > 0 {
+                break
+            }
+
+            try await Task.sleep(nanoseconds: 500_000_000)
+        }
+
+        try await Task.sleep(nanoseconds: 750_000_000)
+    }
+
     private struct PageInspection {
         var href: String
         var title: String
@@ -67,18 +119,20 @@ final class UsageScraper: NSObject, ObservableObject {
         let script = """
         (() => {
           const body = document.body;
+          const href = location.href;
           const text = body ? body.innerText : "";
           const weeklyIndex = text.search(/Weekly usage limit/i);
           const weeklySlice = weeklyIndex >= 0 ? text.slice(weeklyIndex, weeklyIndex + 700) : text;
           const percentMatch = weeklySlice.match(/(\\d{1,3}(?:\\.\\d+)?)\\s*%\\s*remaining/i);
           const resetMatch = weeklySlice.match(/Resets\\s+([^\\n]+)/i);
-          const loginLike = /(log in|sign up|continue with|enter your password|welcome|verify)/i.test(text);
+          const loginLike = /(log in|login|sign in|signin|sign up|create an account|continue with|email address|enter your email|enter your password|forgot password|welcome back|verify)/i.test(text);
+          const authURL = /(\\/auth|\\/login|\\/signin|oauth|authorize|auth\\.openai\\.com)/i.test(href);
           return {
-            href: location.href,
+            href,
             title: document.title || "",
             percent: percentMatch ? Number(percentMatch[1]) : null,
             resetText: resetMatch ? resetMatch[1].trim() : null,
-            needsLogin: weeklyIndex < 0 && loginLike
+            needsLogin: weeklyIndex < 0 && (loginLike || authURL)
           };
         })();
         """

@@ -15,7 +15,7 @@ enum UsageScrapeError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .needsLogin:
-            return "Log in to ChatGPT, then refresh."
+            return "Not signed in to ChatGPT. Log in, then refresh."
         case .noUsageFound:
             return "Could not find weekly usage on the page."
         case .invalidPage:
