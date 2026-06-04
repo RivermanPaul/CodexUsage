@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 struct ContentView: View {
     @EnvironmentObject private var model: UsageViewModel
@@ -99,19 +98,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
 
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color.white.opacity(0.92))
-                    .frame(height: 15)
-                Capsule()
-                    .fill(roomColor)
-                    .frame(width: barWidth(model.snapshot.weeklyRemaining), height: 15)
-                Rectangle()
-                    .fill(Color(red: 0.48, green: 0.72, blue: 1))
-                    .frame(width: 3, height: 25)
-                    .offset(x: barWidth(model.targetRemaining))
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            weekBar
 
             HStack(alignment: .top) {
                 stat("EOD target", percent(model.targetRemaining))
@@ -195,9 +182,65 @@ struct ContentView: View {
         value < 0 ? "-\(percent(abs(value)))" : percent(value)
     }
 
-    private func barWidth(_ percent: Double) -> CGFloat {
+    private var weekBar: some View {
+        TimelineView(.periodic(from: Date(), by: 60)) { context in
+            GeometryReader { proxy in
+                let width = proxy.size.width
+                let barHeight: CGFloat = 15
+                let barY: CGFloat = 18
+                let fillWidth = xPosition(for: model.snapshot.weeklyRemaining, in: width)
+                let eodX = clampedXPosition(for: model.targetRemaining, in: width, inset: 2)
+                let nowX = clampedXPosition(for: model.currentTargetRemaining(at: context.date), in: width, inset: 8)
+
+                ZStack(alignment: .topLeading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.92))
+                        .frame(width: width, height: barHeight)
+                        .position(x: width / 2, y: barY)
+
+                    Capsule()
+                        .fill(roomColor)
+                        .frame(width: fillWidth, height: barHeight)
+                        .position(x: fillWidth / 2, y: barY)
+
+                    ForEach(0...7, id: \.self) { day in
+                        Rectangle()
+                            .fill(Color.black.opacity(day == 0 || day == 7 ? 0.34 : 0.22))
+                            .frame(width: day == 0 || day == 7 ? 2 : 1, height: day == 0 || day == 7 ? 19 : 13)
+                            .position(
+                                x: clampedXPosition(for: model.targetRemaining(forDayBoundary: day), in: width, inset: 2),
+                                y: barY
+                            )
+                    }
+
+                    Rectangle()
+                        .fill(Color(red: 0.48, green: 0.72, blue: 1))
+                        .frame(width: 3, height: 25)
+                        .position(x: eodX, y: barY)
+
+                    VStack(spacing: 1) {
+                        Image(systemName: "arrowtriangle.down.fill")
+                            .font(.system(size: 12, weight: .black))
+                        Rectangle()
+                            .frame(width: 2, height: 16)
+                    }
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.4), radius: 3, y: 1)
+                    .position(x: nowX, y: 10)
+                }
+            }
+        }
+        .frame(height: 36)
+        .accessibilityLabel("Weekly remaining bar")
+    }
+
+    private func xPosition(for percent: Double, in width: CGFloat) -> CGFloat {
         let clamped = min(100, max(0, percent))
-        return UIScreen.main.bounds.width * 0.82 * CGFloat(clamped / 100)
+        return width * CGFloat(clamped / 100)
+    }
+
+    private func clampedXPosition(for percent: Double, in width: CGFloat, inset: CGFloat) -> CGFloat {
+        min(max(inset, xPosition(for: percent, in: width)), max(inset, width - inset))
     }
 }
 

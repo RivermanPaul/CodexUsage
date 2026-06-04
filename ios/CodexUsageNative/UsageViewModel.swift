@@ -33,6 +33,16 @@ final class UsageViewModel: ObservableObject {
         min(100, max(0, 100 - Double(cycleDay) * snapshot.dailyAllowance))
     }
 
+    func targetRemaining(forDayBoundary day: Int) -> Double {
+        let day = min(7, max(0, day))
+        return min(100, max(0, 100 - Double(day) * snapshot.dailyAllowance))
+    }
+
+    func currentTargetRemaining(at date: Date = Date()) -> Double {
+        let progress = cycle(now: date).progress
+        return min(100, max(0, 100 - progress * 7 * snapshot.dailyAllowance))
+    }
+
     var roomToday: Double {
         snapshot.weeklyRemaining - targetRemaining
     }
@@ -148,20 +158,23 @@ final class UsageViewModel: ObservableObject {
         }
     }
 
-    private func cycle() -> (day: Int, reset: Date) {
+    private func cycle(now: Date = Date()) -> (day: Int, reset: Date, progress: Double) {
         var reset = snapshot.resetAt
         let calendar = Calendar.current
-        let now = Date()
 
         while reset <= now {
             reset = calendar.date(byAdding: .day, value: 7, to: reset) ?? reset.addingTimeInterval(7 * 24 * 60 * 60)
         }
 
         let cycleStart = calendar.date(byAdding: .day, value: -7, to: reset) ?? reset.addingTimeInterval(-7 * 24 * 60 * 60)
+        let totalDuration = reset.timeIntervalSince(cycleStart)
+        let elapsedDuration = now.timeIntervalSince(cycleStart)
+        let progress = totalDuration > 0 ? min(1, max(0, elapsedDuration / totalDuration)) : 0
+
         let startDay = calendar.startOfDay(for: cycleStart)
         let currentDay = calendar.startOfDay(for: now)
         let elapsed = calendar.dateComponents([.day], from: startDay, to: currentDay).day ?? 0
-        return (min(7, max(1, elapsed + 1)), reset)
+        return (min(7, max(1, elapsed + 1)), reset, progress)
     }
 
     private func updateStatus() {
