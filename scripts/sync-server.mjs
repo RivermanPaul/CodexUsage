@@ -17,6 +17,9 @@ const syncTokenPath = process.env.CODEX_USAGE_SYNC_TOKEN_FILE || join(homedir(),
 const syncToken = loadSyncToken();
 const revealSource = process.env.CODEX_USAGE_REVEAL_SOURCE !== "0";
 const codexCaptureBounds = parseCodexCaptureBounds(process.env.CODEX_USAGE_CODEX_BOUNDS || "116,147,1280,820");
+const chromeCaptureBounds = parseCodexCaptureBounds(process.env.CODEX_USAGE_CHROME_BOUNDS || "116,147,1800,1100");
+const chromeWeeklyRegion = parseScreenRegion(process.env.CODEX_USAGE_CHROME_WEEKLY_REGION || "1120,420,640,190");
+const chromeUsageUrl = process.env.CODEX_USAGE_CHROME_URL || "https://chatgpt.com/codex/cloud/settings/analytics#usage";
 const dryRun = process.env.CODEX_USAGE_DRY_RUN === "1";
 
 function loadSyncToken() {
@@ -39,6 +42,18 @@ function parseCodexCaptureBounds(value) {
     y: Math.round(parts[1]),
     width: Math.max(640, Math.round(parts[2])),
     height: Math.max(480, Math.round(parts[3]))
+  };
+}
+
+function parseScreenRegion(value) {
+  const parts = String(value || "").split(",").map((part) => Number(part.trim()));
+  if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part))) return null;
+
+  return {
+    x: Math.round(parts[0]),
+    y: Math.round(parts[1]),
+    width: Math.max(1, Math.round(parts[2])),
+    height: Math.max(1, Math.round(parts[3]))
   };
 }
 
@@ -98,8 +113,8 @@ function normalizeText(value) {
 function findWeeklyPercent(text) {
   const normalized = normalizeText(text);
   const patterns = [
-    /Usage remaining[\s\S]{0,420}?Weekl\w*\s+(\d{1,3}(?:\.\d+)?)\s*%/i,
-    /Weekly usage limit[\s\S]{0,220}?(\d{1,3}(?:\.\d+)?)\s*%\s*remaining/i
+    /Weekly usage limit[\s\S]{0,220}?(\d{1,3}(?:\.\d+)?)\s*%\s*remaining/i,
+    /Usage remaining[\s\S]{0,420}?Weekl\w*\s+(\d{1,3}(?:\.\d+)?)\s*%/i
   ];
 
   for (const pattern of patterns) {
@@ -111,6 +126,13 @@ function findWeeklyPercent(text) {
   }
 
   return null;
+}
+
+function findChromeAnalyticsWeeklyPercent(text) {
+  const normalized = normalizeText(text);
+  const match = normalized.match(/Weekly usage limit[\s\S]{0,180}?(\d{1,3}(?:\.\d+)?)\s*%\s*remaining/i);
+  if (!match) return null;
+  return normalizePercent(match[1]);
 }
 
 function monthIndex(value) {
@@ -259,11 +281,20 @@ async function readOcrText(imagePath) {
   return result.stdout;
 }
 
-async function captureScreenshot(screenshotPath) {
+function screenshotArgs(screenshotPath, region) {
+  const args = ["-x"];
+  if (region) args.push("-R", `${region.x},${region.y},${region.width},${region.height}`);
+  args.push(screenshotPath);
+  return args;
+}
+
+async function captureScreenshot(screenshotPath, region = null) {
+  const args = screenshotArgs(screenshotPath, region);
+  const regionShell = region ? ` -R ${shellQuote(`${region.x},${region.y},${region.width},${region.height}`)}` : "";
   const attempts = [
-    ["/usr/sbin/screencapture", ["-x", screenshotPath]],
-    ["/bin/launchctl", ["asuser", String(process.getuid()), "/usr/sbin/screencapture", "-x", screenshotPath]],
-    ["/usr/bin/osascript", ["-e", `do shell script "/usr/sbin/screencapture -x ${shellQuote(screenshotPath)}"`]]
+    ["/usr/sbin/screencapture", args],
+    ["/bin/launchctl", ["asuser", String(process.getuid()), "/usr/sbin/screencapture", ...args]],
+    ["/usr/bin/osascript", ["-e", `do shell script "/usr/sbin/screencapture -x${regionShell} ${shellQuote(screenshotPath)}"`]]
   ];
   const errors = [];
 
@@ -313,6 +344,50 @@ async function clickPoint(x, y) {
   await run(cliclickCommand, [`c:${Math.round(x)},${Math.round(y)}`]);
 }
 
+async function revealChromeUsagePage() {
+  const { x, y, width, height } = chromeCaptureBounds;
+  const right = x + width;
+  const bottom = y + height;
+  const escapedUsageUrl = chromeUsageUrl.replace(/"/g, '\\"');
+  const script = `
+tell application "System Events"
+  if exists process "ChatGPT Atlas" then
+    tell process "ChatGPT Atlas"
+      repeat with atlasWindow in windows
+        set position of atlasWindow to {2600, 80}
+      end repeat
+    end tell
+  end if
+end tell
+tell application "Google Chrome"
+  activate
+  if (count of windows) = 0 then make new window
+  set bounds of front window to {${x}, ${y}, ${right}, ${bottom}}
+  set usageUrl to "${escapedUsageUrl}"
+  set foundUsageTab to false
+  repeat with tabIndex from 1 to count of tabs of front window
+    set tabUrl to URL of tab tabIndex of front window
+    if tabUrl starts with "https://chatgpt.com/codex/cloud/settings/analytics" then
+      set active tab index of front window to tabIndex
+      set URL of tab tabIndex of front window to usageUrl
+      set foundUsageTab to true
+      exit repeat
+    end if
+  end repeat
+  if foundUsageTab is false then
+    set newTab to make new tab at end of tabs of front window with properties {URL:usageUrl}
+    set active tab index of front window to count of tabs of front window
+  end if
+end tell`;
+
+  await run("/usr/bin/osascript", ["-e", script]);
+  await run("/usr/bin/osascript", [
+    "-e",
+    `tell application "System Events" to tell process "Google Chrome" to set frontmost to true`
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 6500));
+}
+
 async function revealCodexUsageMenu() {
   const bounds = await getCodexWindowBounds();
 
@@ -329,14 +404,16 @@ async function revealCodexUsageMenu() {
   await new Promise((resolve) => setTimeout(resolve, 700));
 }
 
-async function readUsageFromMacScreen() {
+async function readUsageFromMacScreen(options = {}) {
   const screenshotPath = join(tmpdir(), `codex-usage-${process.pid}-${Date.now()}.png`);
 
   try {
-    await captureScreenshot(screenshotPath);
+    await captureScreenshot(screenshotPath, options.region || null);
     const text = await readOcrText(screenshotPath);
-    const weeklyRemaining = findWeeklyPercent(text);
-    const reset = findWeeklyReset(text);
+    const weeklyRemaining = options.chromeAnalytics
+      ? findChromeAnalyticsWeeklyPercent(text)
+      : findWeeklyPercent(text);
+    const reset = options.skipReset ? null : findWeeklyReset(text);
 
     return { weeklyRemaining, reset };
   } finally {
@@ -345,6 +422,21 @@ async function readUsageFromMacScreen() {
 }
 
 async function pollUsageFromMac() {
+  const errors = [];
+
+  if (revealSource) {
+    try {
+      await revealChromeUsagePage();
+      const chromeUsage = await readUsageFromMacScreen({ chromeAnalytics: true, skipReset: true, region: chromeWeeklyRegion });
+      if (chromeUsage.weeklyRemaining !== null) {
+        return updateUsage(chromeUsage.weeklyRemaining, "chrome-ocr", chromeUsage.reset);
+      }
+      errors.push("Chrome analytics page did not expose weekly usage.");
+    } catch (error) {
+      errors.push(`Chrome analytics source failed: ${error.message}`);
+    }
+  }
+
   let revealError = null;
   if (revealSource) {
     try {
@@ -362,7 +454,8 @@ async function pollUsageFromMac() {
   }
 
   if (usage.weeklyRemaining === null) {
-    const reason = revealError ? ` Source reveal failed: ${revealError.message}` : "";
+    const details = errors.length ? ` ${errors.join(" ")}` : "";
+    const reason = revealError ? ` Source reveal failed: ${revealError.message}` : details;
     throw new Error(`Could not find weekly usage in the Mac usage menu.${reason}`);
   }
 
