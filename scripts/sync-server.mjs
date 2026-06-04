@@ -494,8 +494,7 @@ function redirect(response, location) {
   response.end("");
 }
 
-function appUrlForResult(result, returnTo) {
-  const remaining = result.usage.weeklyRemaining;
+function appUrlForReturn(returnTo) {
   let appUrl = new URL("https://rivermanpaul.github.io/CodexUsage/");
 
   if (returnTo) {
@@ -506,9 +505,23 @@ function appUrlForResult(result, returnTo) {
     }
   }
 
+  return appUrl;
+}
+
+function appUrlForResult(result, returnTo) {
+  const remaining = result.usage.weeklyRemaining;
+  const appUrl = appUrlForReturn(returnTo);
+
   appUrl.searchParams.set("remaining", String(remaining));
   if (result.usage.resetAt) appUrl.searchParams.set("reset", result.usage.resetAt);
   appUrl.searchParams.set("synced", String(Date.now()));
+  return appUrl.href;
+}
+
+function appUrlForError(error, returnTo) {
+  const appUrl = appUrlForReturn(returnTo);
+  const message = error.statusCode === 401 ? "Mac helper unauthorized" : "Refresh failed";
+  appUrl.searchParams.set("error", message);
   return appUrl.href;
 }
 
@@ -606,6 +619,12 @@ if (process.argv[2] === "--once") {
       const result = await updateUsage(url.searchParams.get("remaining"), url.searchParams.get("source"), reset);
       send(response, 200, html(result));
     } catch (error) {
+      const returnTo = url.searchParams.get("return") || "";
+      if (url.pathname === "/poll" && returnTo) {
+        redirect(response, appUrlForError(error, returnTo));
+        return;
+      }
+
       send(response, error.statusCode || 400, error.message, "text/plain; charset=utf-8");
     }
   }).listen(port, host, () => {

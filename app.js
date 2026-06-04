@@ -49,20 +49,13 @@
     window.localStorage.setItem(storageKey, JSON.stringify(state));
   }
 
-  function ensureRefreshTime() {
-    if (!state.lastRefreshedAt) {
-      state.lastRefreshedAt = new Date().toISOString();
-      state.sourceRefreshedAt = state.lastRefreshedAt;
-      saveState();
-    }
-  }
-
   function applyUrlSync() {
     var params = new URLSearchParams(window.location.search);
     var hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     var remaining = params.get("remaining") || params.get("weekly");
     var reset = params.get("reset");
     var synced = params.get("synced");
+    var refreshError = params.get("error");
     var helper = hashParams.get("helper");
     var token = hashParams.get("token");
     var mode = hashParams.get("mode");
@@ -79,6 +72,11 @@
       state.resetAt = reset;
       changed = true;
       usageChanged = true;
+    }
+
+    if (refreshError !== null) {
+      state.refreshError = refreshError.trim() || "Refresh failed";
+      changed = true;
     }
 
     if (helper !== null && helper.trim() !== "") {
@@ -103,12 +101,13 @@
       if (usageChanged) {
         state.sourceRefreshedAt = normalizeTimestamp(synced) || new Date().toISOString();
         state.lastRefreshedAt = new Date().toISOString();
+        state.refreshError = "";
       }
       saveState();
       window.history.replaceState(null, "", window.location.pathname);
     }
 
-    return usageChanged;
+    return usageChanged || refreshError !== null;
   }
 
   function clamp(value, min, max) {
@@ -202,7 +201,7 @@
   function formatRefreshTime(value, sourceValue) {
     var now = new Date();
     var refreshed = new Date(value);
-    if (Number.isNaN(refreshed.getTime())) return "Last checked just now";
+    if (Number.isNaN(refreshed.getTime())) return "Not checked yet";
 
     var text = "Checked " + formatStatusDate(refreshed, now);
     var sourceText = formatStatusDate(sourceValue, now);
@@ -258,7 +257,8 @@
     dailyInput.value = String(state.dailyAllowance);
     resetInput.value = state.resetAt;
     resetDisplay.textContent = formatResetControl(state.resetAt);
-    refreshStatusText.textContent = formatRefreshTime(state.lastRefreshedAt, state.sourceRefreshedAt);
+    refreshStatus.classList.toggle("is-error", Boolean(state.refreshError));
+    refreshStatusText.textContent = state.refreshError || formatRefreshTime(state.lastRefreshedAt, state.sourceRefreshedAt);
 
     remainingValue.textContent = formatPercent(state.remaining);
     remainingBar.style.width = state.remaining + "%";
@@ -291,6 +291,7 @@
     state.remaining = clamp(value, 0, 100);
     state.sourceRefreshedAt = now;
     state.lastRefreshedAt = now;
+    state.refreshError = "";
     saveState();
     render();
   }
@@ -298,8 +299,18 @@
   function setRefreshing(isRefreshing, message) {
     refreshButton.classList.toggle("is-refreshing", isRefreshing);
     refreshStatus.classList.toggle("is-refreshing", isRefreshing);
+    if (isRefreshing) refreshStatus.classList.remove("is-error");
     refreshButton.disabled = isRefreshing;
-    refreshStatusText.textContent = isRefreshing ? (message || "Refreshing...") : formatRefreshTime(state.lastRefreshedAt, state.sourceRefreshedAt);
+    refreshStatusText.textContent = isRefreshing
+      ? (message || "Refreshing...")
+      : state.refreshError || formatRefreshTime(state.lastRefreshedAt, state.sourceRefreshedAt);
+  }
+
+  function setRefreshFailure(message) {
+    state.refreshError = message || "Refresh failed";
+    saveState();
+    render();
+    setRefreshing(false);
   }
 
   function refreshStats(allowMacPoll) {
@@ -313,7 +324,7 @@
     setRefreshing(true, allowMacPoll && getMacPollUrl() ? "Polling Mac..." : "Fetching latest...");
 
     Promise.all([
-      (allowMacPoll ? pollMacHelper() : Promise.resolve(null)).then(function (macUsage) {
+      (allowMacPoll && getMacPollUrl() ? pollMacHelper() : Promise.resolve(null)).then(function (macUsage) {
         setRefreshing(true, "Fetching latest...");
         return fetchRemoteUsage().then(function (remoteUsage) {
           return newestUsage(macUsage, remoteUsage);
@@ -339,12 +350,12 @@
       }
       state.sourceRefreshedAt = usage.refreshedAt || state.sourceRefreshedAt || "";
       state.lastRefreshedAt = new Date().toISOString();
+      state.refreshError = "";
       saveState();
       render();
       setRefreshing(false);
-    }).catch(function () {
-      setRefreshing(false);
-      openSyncSheet();
+    }).catch(function (error) {
+      setRefreshFailure(error && error.message ? error.message : "Refresh failed");
     });
   }
 
@@ -380,8 +391,6 @@
       return response.json();
     }).then(function (data) {
       return data && data.usage ? data.usage : data;
-    }).catch(function () {
-      return null;
     }).finally(function () {
       window.clearTimeout(timeout);
     });
@@ -509,6 +518,7 @@
     state.remaining = clamp(syncRemainingInput.value, 0, 100);
     state.sourceRefreshedAt = now;
     state.lastRefreshedAt = now;
+    state.refreshError = "";
     saveState();
     closeSyncSheet();
     render();
@@ -525,7 +535,6 @@
   }
 
   var syncedFromUrl = applyUrlSync();
-  ensureRefreshTime();
   render();
   if (!syncedFromUrl) refreshStats(false);
 }());
