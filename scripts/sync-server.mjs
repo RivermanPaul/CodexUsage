@@ -50,6 +50,22 @@ function normalizePercent(value) {
   return Math.round(Math.min(100, Math.max(0, number)) * 10) / 10;
 }
 
+function toLocalInputValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hour}:${minute}`;
+}
+
+function normalizeResetAt(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return "";
+  const reset = new Date(value);
+  if (Number.isNaN(reset.getTime())) return "";
+  return toLocalInputValue(reset);
+}
+
 function normalizeSource(value) {
   const source = String(value || "mac-helper").trim();
   if (!/^[a-z0-9_-]{1,32}$/i.test(source)) return "mac-helper";
@@ -81,6 +97,94 @@ function findWeeklyPercent(text) {
   return null;
 }
 
+function monthIndex(value) {
+  const months = {
+    jan: 0,
+    feb: 1,
+    mar: 2,
+    apr: 3,
+    may: 4,
+    jun: 5,
+    jul: 6,
+    aug: 7,
+    sep: 8,
+    oct: 9,
+    nov: 10,
+    dec: 11
+  };
+  return months[String(value || "").slice(0, 3).toLowerCase()];
+}
+
+function parseMeridiemTime(time, meridiem) {
+  if (!time) return null;
+  const parts = String(time).split(":");
+  let hour = Number(parts[0]);
+  const minute = Number(parts[1]);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+
+  const marker = String(meridiem || "").toLowerCase();
+  if (marker === "pm" && hour < 12) hour += 12;
+  if (marker === "am" && hour === 12) hour = 0;
+
+  return { hour, minute };
+}
+
+function sameResetDate(first, second) {
+  const firstReset = normalizeResetAt(first);
+  const secondReset = normalizeResetAt(second);
+  return Boolean(firstReset && secondReset && firstReset.slice(0, 10) === secondReset.slice(0, 10));
+}
+
+function normalizeResetCandidate(candidate, previousResetAt = "") {
+  if (candidate && typeof candidate === "object") {
+    const resetAt = normalizeResetAt(candidate.resetAt);
+    if (!resetAt) return "";
+    if (!candidate.exactTime && sameResetDate(resetAt, previousResetAt)) {
+      return normalizeResetAt(previousResetAt);
+    }
+    return resetAt;
+  }
+
+  return normalizeResetAt(candidate);
+}
+
+function resetFromMatch(match, now = new Date()) {
+  const month = monthIndex(match[1]);
+  const day = Number(match[2]);
+  if (!Number.isFinite(month) || !Number.isFinite(day)) return "";
+
+  const year = match[3] ? Number(match[3]) : now.getFullYear();
+  const parsedTime = parseMeridiemTime(match[4], match[5]);
+  const exactTime = Boolean(parsedTime);
+  const hour = parsedTime ? parsedTime.hour : now.getHours();
+  const minute = parsedTime ? parsedTime.minute : now.getMinutes();
+  let reset = new Date(year, month, day, hour, minute);
+
+  if (!match[3] && reset.getTime() < now.getTime() - 12 * 60 * 60 * 1000) {
+    reset = new Date(year + 1, month, day, hour, minute);
+  }
+
+  return { resetAt: toLocalInputValue(reset), exactTime };
+}
+
+function findWeeklyReset(text, now = new Date()) {
+  const normalized = normalizeText(text);
+  const patterns = [
+    /Usage remaining[\s\S]{0,520}?Weekly\s+\d{1,3}(?:\.\d+)?\s*%\s+([A-Z][a-z]{2})\s*(\d{1,2})(?:,?\s+(\d{4}))?(?:\s+(?:at\s+)?(\d{1,2}:\d{2})\s*([AP]M))?/i,
+    /Weekly usage limit[\s\S]{0,320}?Resets\s+([A-Z][a-z]{2})\s*(\d{1,2})(?:,?\s+(\d{4}))?(?:\s+(?:at\s+)?(\d{1,2}:\d{2})\s*([AP]M))?/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match) {
+      const reset = resetFromMatch(match, now);
+      if (reset) return reset;
+    }
+  }
+
+  return null;
+}
+
 function isLoopback(request) {
   const address = request.socket.remoteAddress || "";
   return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
@@ -94,7 +198,7 @@ function assertAuthorized(request, url) {
   throw error;
 }
 
-async function updateUsage(remaining, source) {
+async function updateUsage(remaining, source, resetCandidate = "") {
   const weeklyRemaining = normalizePercent(remaining);
   if (weeklyRemaining === null) {
     throw new Error("Weekly remaining must be a number between 0 and 100.");
@@ -113,7 +217,12 @@ async function updateUsage(remaining, source) {
     source: normalizeSource(source)
   };
 
-  if (previous.resetAt) usage.resetAt = previous.resetAt;
+  const normalizedResetAt = normalizeResetCandidate(resetCandidate, previous.resetAt);
+  if (normalizedResetAt) {
+    usage.resetAt = normalizedResetAt;
+  } else if (previous.resetAt) {
+    usage.resetAt = previous.resetAt;
+  }
 
   if (dryRun) return { usage, pushed: false, dryRun: true };
 
@@ -161,12 +270,13 @@ async function pollUsageFromMac() {
     await captureScreenshot(screenshotPath);
     const text = await readOcrText(screenshotPath);
     const weeklyRemaining = findWeeklyPercent(text);
+    const reset = findWeeklyReset(text);
 
     if (weeklyRemaining === null) {
       throw new Error("Could not find weekly usage in the visible Mac screen. Open the ChatGPT usage menu or Codex analytics page, then try again.");
     }
 
-    return updateUsage(weeklyRemaining, "mac-ocr");
+    return updateUsage(weeklyRemaining, "mac-ocr", reset);
   } finally {
     unlink(screenshotPath).catch(() => {});
   }
@@ -175,12 +285,13 @@ async function pollUsageFromMac() {
 async function pollUsageFromImage(imagePath) {
   const text = await readOcrText(imagePath);
   const weeklyRemaining = findWeeklyPercent(text);
+  const reset = findWeeklyReset(text);
 
   if (weeklyRemaining === null) {
     throw new Error("Could not find weekly usage in OCR text.");
   }
 
-  return updateUsage(weeklyRemaining, "mac-ocr-test");
+  return updateUsage(weeklyRemaining, "mac-ocr-test", reset);
 }
 
 function send(response, statusCode, body, contentType = "text/html; charset=utf-8") {
@@ -216,6 +327,7 @@ function appUrlForResult(result, returnTo) {
   }
 
   appUrl.searchParams.set("remaining", String(remaining));
+  if (result.usage.resetAt) appUrl.searchParams.set("reset", result.usage.resetAt);
   appUrl.searchParams.set("synced", String(Date.now()));
   return appUrl.href;
 }
@@ -254,7 +366,7 @@ function json(result) {
 }
 
 if (process.argv[2] === "--once") {
-  updateUsage(process.argv[3], "cli").then((result) => {
+  updateUsage(process.argv[3], "cli", process.argv[4]).then((result) => {
     console.log(JSON.stringify(result, null, 2));
   }).catch((error) => {
     console.error(error.message);
@@ -308,7 +420,10 @@ if (process.argv[2] === "--once") {
         return;
       }
 
-      const result = await updateUsage(url.searchParams.get("remaining"), url.searchParams.get("source"));
+      const reset = url.searchParams.get("reset")
+        ? { resetAt: url.searchParams.get("reset"), exactTime: url.searchParams.get("resetExact") !== "0" }
+        : "";
+      const result = await updateUsage(url.searchParams.get("remaining"), url.searchParams.get("source"), reset);
       send(response, 200, html(result));
     } catch (error) {
       send(response, error.statusCode || 400, error.message, "text/plain; charset=utf-8");

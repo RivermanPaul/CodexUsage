@@ -28,7 +28,7 @@ Start the local Mac helper:
 ./scripts/start-interactive-helper.command
 ```
 
-When ChatGPT's usage menu or Codex analytics page is visible, click the bookmarklet. It reads the visible weekly remaining percentage and sends only that percent to the local helper. The helper updates `usage.json`, commits, and pushes through the Mac's existing `gh`/git credentials.
+When ChatGPT's usage menu or Codex analytics page is visible, click the bookmarklet. It reads the visible weekly remaining percentage and weekly reset date, then sends only those values to the local helper. The helper updates `usage.json`, commits, and pushes through the Mac's existing `gh`/git credentials.
 
 The phone app fetches `usage.json` on refresh, so no ChatGPT credentials or long-lived tokens live in the public web app.
 
@@ -36,7 +36,7 @@ The visible refresh status shows both the time this device last checked successf
 
 ## Mac polling
 
-The helper also exposes `GET /poll`. It takes a Mac screenshot, OCRs the visible ChatGPT usage menu or Codex analytics page with Tesseract, extracts the weekly remaining percentage, then updates, commits, and pushes `usage.json`.
+The helper also exposes `GET /poll`. It takes a Mac screenshot, OCRs the visible ChatGPT usage menu or Codex analytics page with Tesseract, extracts the weekly remaining percentage and reset date, then updates, commits, and pushes `usage.json`.
 
 The helper is started in a `tmux` session so it can keep running while still being able to capture the logged-in user's screen. A normal LaunchAgent can serve HTTP, but it cannot reliably capture the display for OCR.
 
