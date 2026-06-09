@@ -171,9 +171,7 @@ final class UsageViewModel: ObservableObject {
         let elapsedDuration = now.timeIntervalSince(cycleStart)
         let progress = totalDuration > 0 ? min(1, max(0, elapsedDuration / totalDuration)) : 0
 
-        let startDay = calendar.startOfDay(for: cycleStart)
-        let currentDay = calendar.startOfDay(for: now)
-        let elapsed = calendar.dateComponents([.day], from: startDay, to: currentDay).day ?? 0
+        let elapsed = Int(floor(max(0, elapsedDuration) / (24 * 60 * 60)))
         return (min(7, max(1, elapsed + 1)), reset, progress)
     }
 
